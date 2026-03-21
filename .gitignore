@@ -1,0 +1,36 @@
+﻿# Compiled objects and binaries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Build directories
+build/
+cmake-build-*/
+
+# Test artifacts
+tests/test_all
+
+# Coverage and profiling
+*.gcda
+*.gcno
+*.gcov
+coverage/
+
+# Logs
+*.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Optional local env
+.env
+git.txt
