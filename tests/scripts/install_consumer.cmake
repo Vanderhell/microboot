@@ -31,15 +31,12 @@ add_executable(consumer consumer.c)
 target_link_libraries(consumer PRIVATE microboot::microboot)
 if(MSVC)
     target_compile_options(consumer PRIVATE /W4 /WX /permissive-)
-elseif("@MBOOT_C_COMPILER_ID@" STREQUAL "Clang")
+elseif("${MBOOT_C_COMPILER_ID}" STREQUAL "Clang")
     target_compile_options(consumer PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unused-command-line-argument)
 else()
     target_compile_options(consumer PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 ]])
-file(READ "${_consumer_src}/CMakeLists.txt" _consumer_cmakelists)
-string(REPLACE "@MBOOT_C_COMPILER_ID@" "${MBOOT_C_COMPILER_ID}" _consumer_cmakelists "${_consumer_cmakelists}")
-file(WRITE "${_consumer_src}/CMakeLists.txt" "${_consumer_cmakelists}")
 
 file(WRITE "${_consumer_src}/consumer.c" [[
 #include "mboot.h"
