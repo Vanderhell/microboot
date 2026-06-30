@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(microboot LANGUAGES C CXX)
+project(microboot LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CTest)
@@ -9,9 +9,6 @@ include(CMakePackageConfigHelpers)
 set(CMAKE_C_STANDARD 99 CACHE STRING "C standard for microboot")
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
-set(CMAKE_CXX_STANDARD 11 CACHE STRING "C++ standard for microboot tests")
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(MICROBOOT_BUILD_TESTS "Build microboot tests and fixtures" ON)
 
@@ -63,5 +60,9 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/microbootConfig.cmake
 )
 
 if(BUILD_TESTING AND MICROBOOT_BUILD_TESTS)
+    enable_language(CXX)
+    set(CMAKE_CXX_STANDARD 11 CACHE STRING "C++ standard for microboot tests")
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_CXX_EXTENSIONS OFF)
     add_subdirectory(tests)
 endif()

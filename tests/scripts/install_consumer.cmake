@@ -112,8 +112,22 @@ int main(void)
 }
 ]])
 
+set(_consumer_configure_args
+    -G "${MBOOT_GENERATOR}"
+    -DCMAKE_C_COMPILER=${MBOOT_C_COMPILER}
+    -S "${_consumer_src}"
+    -B "${_consumer_build}"
+    -DCMAKE_PREFIX_PATH=${_prefix}
+)
+if(DEFINED MBOOT_C_COMPILER_TARGET AND NOT MBOOT_C_COMPILER_TARGET STREQUAL "")
+    list(APPEND _consumer_configure_args -DCMAKE_C_COMPILER_TARGET=${MBOOT_C_COMPILER_TARGET})
+endif()
+if(DEFINED MBOOT_C_COMPILER_EXTERNAL_TOOLCHAIN AND NOT MBOOT_C_COMPILER_EXTERNAL_TOOLCHAIN STREQUAL "")
+    list(APPEND _consumer_configure_args -DCMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN=${MBOOT_C_COMPILER_EXTERNAL_TOOLCHAIN})
+endif()
+
 execute_process(
-    COMMAND "${CMAKE_COMMAND}" -G "${MBOOT_GENERATOR}" -DCMAKE_C_COMPILER=${MBOOT_C_COMPILER} -DCMAKE_C_COMPILER_TARGET=${MBOOT_C_COMPILER_TARGET} -DCMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN=${MBOOT_C_COMPILER_EXTERNAL_TOOLCHAIN} -S "${_consumer_src}" -B "${_consumer_build}" -DCMAKE_PREFIX_PATH=${_prefix}
+    COMMAND "${CMAKE_COMMAND}" ${_consumer_configure_args}
     RESULT_VARIABLE configure_result
     OUTPUT_VARIABLE configure_stdout
     ERROR_VARIABLE configure_stderr

@@ -29,8 +29,21 @@ endif()
     string(REPLACE "@MBOOT_C_COMPILER_ID@" "${MBOOT_C_COMPILER_ID}" _cmakelists "${_cmakelists}")
     file(WRITE "${case_dir}/CMakeLists.txt" "${_cmakelists}")
 
+    set(_case_configure_args
+        -G "${MBOOT_GENERATOR}"
+        -DCMAKE_C_COMPILER=${MBOOT_C_COMPILER}
+        -S "${case_dir}"
+        -B "${case_dir}/build"
+    )
+    if(DEFINED MBOOT_C_COMPILER_TARGET AND NOT MBOOT_C_COMPILER_TARGET STREQUAL "")
+        list(APPEND _case_configure_args -DCMAKE_C_COMPILER_TARGET=${MBOOT_C_COMPILER_TARGET})
+    endif()
+    if(DEFINED MBOOT_C_COMPILER_EXTERNAL_TOOLCHAIN AND NOT MBOOT_C_COMPILER_EXTERNAL_TOOLCHAIN STREQUAL "")
+        list(APPEND _case_configure_args -DCMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN=${MBOOT_C_COMPILER_EXTERNAL_TOOLCHAIN})
+    endif()
+
     execute_process(
-        COMMAND "${CMAKE_COMMAND}" -G "${MBOOT_GENERATOR}" -DCMAKE_C_COMPILER=${MBOOT_C_COMPILER} -DCMAKE_C_COMPILER_TARGET=${MBOOT_C_COMPILER_TARGET} -DCMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN=${MBOOT_C_COMPILER_EXTERNAL_TOOLCHAIN} -S "${case_dir}" -B "${case_dir}/build"
+        COMMAND "${CMAKE_COMMAND}" ${_case_configure_args}
         RESULT_VARIABLE config_result
         OUTPUT_VARIABLE config_stdout
         ERROR_VARIABLE config_stderr
