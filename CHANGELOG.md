@@ -1,14 +1,11 @@
 # Changelog
 
-## [1.0.0] — 2026-03-20
+## [Unreleased]
 
-### Added
-- Boot reason detection (cold, watchdog, crash, brownout, user).
-- Crash loop detection with configurable threshold.
-- Boot mode decision (NORMAL, RECOVERY, SAFE, FACTORY).
-- Persistent CRC-protected boot record (32 bytes).
-- Clean shutdown tracking.
-- Boot confirmation (proven boot pattern).
-- Uptime recording.
-- Custom decision callback.
-- 32 tests covering full lifecycle, crash loops, IO failures.
+### Changed
+- Replaced the native persisted record with a canonical 32-byte two-slot wire format.
+- Added runtime configuration for crash-loop threshold selection.
+- Added explicit lifecycle states and rejected invalid transitions.
+- Added read-back verification for slot writes.
+- Added install/package consumption, C++ consumer coverage, and compile-fail tests.
+- Corrected public docs to reflect advisory modes, no firmware jump, and no OTA/recovery execution.

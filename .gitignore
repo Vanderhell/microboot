@@ -34,3 +34,4 @@ Thumbs.db
 # Optional local env
 .env
 git.txt
+/prompts

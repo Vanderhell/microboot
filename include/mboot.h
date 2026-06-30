@@ -1,259 +1,175 @@
 /*
- * microboot — Boot & recovery manager for embedded systems.
- *
- * Orchestrates startup: detect boot reason, check for crash dumps,
- * decide boot mode, detect crash loops. Bridges panicdump, nvlog,
- * and microconf.
- *
- * C99 · Zero dependencies · Zero allocations · Callback-driven · Portable
+ * microboot - Boot and recovery manager for embedded systems.
  *
  * SPDX-License-Identifier: MIT
  * https://github.com/Vanderhell/microboot
  */
 
-#ifndef MBOOT_H
-#define MBOOT_H
+#ifndef MICROBOOT_MBOOT_H_INCLUDED
+#define MICROBOOT_MBOOT_H_INCLUDED
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
-/* ── Configuration ─────────────────────────────────────────────────────── */
+#include <limits.h>
 
-/** Magic value stored in persistent memory to validate boot record. */
-#ifndef MBOOT_MAGIC
-#define MBOOT_MAGIC 0x424F4F54U  /* "BOOT" */
+#if UINT8_MAX != 0xFFu
+#error "microboot requires 8-bit unsigned char"
 #endif
 
-/** Maximum crash loop count before forcing recovery mode. */
-#ifndef MBOOT_CRASH_LOOP_THRESHOLD
-#define MBOOT_CRASH_LOOP_THRESHOLD 3
+#if UINT32_MAX != 0xFFFFFFFFu
+#error "microboot requires 32-bit uint32_t"
 #endif
 
-/** Time window (ms) for crash loop detection. Crashes within this window
- *  after boot increment the loop counter. */
-#ifndef MBOOT_CRASH_WINDOW_MS
-#define MBOOT_CRASH_WINDOW_MS 30000
-#endif
+#define MBOOT_WIRE_BYTES 32u
+#define MBOOT_WIRE_MAGIC 0x424F4F54u /* "BOOT" */
+#define MBOOT_WIRE_VERSION 1u
+#define MBOOT_DEFAULT_CRASH_LOOP_THRESHOLD 3u
 
-/* ── Error codes ───────────────────────────────────────────────────────── */
+#define MBOOT_WIRE_FLAG_STARTED            0x01u
+#define MBOOT_WIRE_FLAG_CONFIRMED          0x02u
+#define MBOOT_WIRE_FLAG_CLEAN_SHUTDOWN     0x04u
+#define MBOOT_WIRE_FLAG_LAST_UPTIME_VALID  0x08u
+#define MBOOT_WIRE_FLAG_RESERVED_MASK      0xF0u
 
 typedef enum {
-    MBOOT_OK            =  0,
-    MBOOT_ERR_NULL      = -1,
-    MBOOT_ERR_IO        = -2,
-    MBOOT_ERR_INVALID   = -3,
-    MBOOT_ERR_CORRUPT   = -4,
+    MBOOT_OK = 0,
+    MBOOT_ERR_NULL = -1,
+    MBOOT_ERR_STATE = -2,
+    MBOOT_ERR_IO = -3,
+    MBOOT_ERR_INVALID = -4,
+    MBOOT_ERR_CORRUPT = -5
 } mboot_err_t;
 
-const char *mboot_err_str(mboot_err_t err);
-
-/* ── Boot reason ───────────────────────────────────────────────────────── */
+typedef enum {
+    MBOOT_STATE_UNINITIALIZED = 0,
+    MBOOT_STATE_READY = 1,
+    MBOOT_STATE_STARTED_UNCONFIRMED = 2,
+    MBOOT_STATE_STARTED_CONFIRMED = 3,
+    MBOOT_STATE_SHUTDOWN_RECORDED = 4,
+    MBOOT_STATE_ERROR = 5
+} mboot_state_t;
 
 typedef enum {
-    MBOOT_REASON_COLD       = 0,   /**< First boot / power-on.            */
-    MBOOT_REASON_NORMAL     = 1,   /**< Clean reboot (software-initiated).*/
-    MBOOT_REASON_WATCHDOG   = 2,   /**< Hardware or software WDT reset.   */
-    MBOOT_REASON_CRASH      = 3,   /**< Crash dump found from prev run.   */
-    MBOOT_REASON_BROWNOUT   = 4,   /**< Power dip / brownout detected.    */
-    MBOOT_REASON_USER       = 5,   /**< User-initiated (button, command). */
+    MBOOT_REASON_COLD = 0,
+    MBOOT_REASON_NORMAL = 1,
+    MBOOT_REASON_WATCHDOG = 2,
+    MBOOT_REASON_CRASH = 3,
+    MBOOT_REASON_BROWNOUT = 4,
+    MBOOT_REASON_USER = 5
 } mboot_reason_t;
 
-const char *mboot_reason_str(mboot_reason_t reason);
-
-/* ── Boot mode (decision) ──────────────────────────────────────────────── */
-
 typedef enum {
-    MBOOT_MODE_NORMAL      = 0,   /**< Normal startup.                    */
-    MBOOT_MODE_RECOVERY    = 1,   /**< Recovery mode (crash loop detected).*/
-    MBOOT_MODE_SAFE        = 2,   /**< Safe mode (defaults, minimal).     */
-    MBOOT_MODE_FACTORY     = 3,   /**< Factory reset (wipe config+logs).  */
+    MBOOT_MODE_NORMAL = 0,
+    MBOOT_MODE_RECOVERY = 1,
+    MBOOT_MODE_SAFE = 2,
+    MBOOT_MODE_FACTORY = 3
 } mboot_mode_t;
 
-const char *mboot_mode_str(mboot_mode_t mode);
+typedef enum {
+    MBOOT_SLOT_IO_OK = 0,
+    MBOOT_SLOT_IO_EMPTY = 1,
+    MBOOT_SLOT_IO_ERROR = -1
+} mboot_slot_io_result_t;
 
-/* ── Boot record (persisted in flash/RTC memory) ───────────────────────── */
-
-/**
- * Persistent boot record — survives resets. Store in RTC backup RAM,
- * EEPROM, or a dedicated flash sector.
- *
- * Total: 32 bytes, naturally aligned.
- */
 typedef struct {
-    uint32_t  magic;              /**< MBOOT_MAGIC for validation.         */
-    uint32_t  boot_count;         /**< Total boots since factory.          */
-    uint32_t  crash_count;        /**< Consecutive crashes (loop detect).  */
-    uint32_t  last_boot_ms;       /**< Uptime at last boot (for window).   */
-    uint32_t  last_uptime_ms;     /**< Uptime before last shutdown/crash.  */
-    uint8_t   last_reason;        /**< mboot_reason_t of previous boot.    */
-    uint8_t   last_mode;          /**< mboot_mode_t of previous boot.      */
-    uint8_t   clean_shutdown;     /**< Was last shutdown clean?            */
-    uint8_t   _reserved;
-    uint32_t  crc32;              /**< CRC of bytes 0..27.                 */
-} mboot_record_t;
+    uint8_t bytes[MBOOT_WIRE_BYTES];
+} mboot_wire_t;
 
-/* ── Platform callbacks ────────────────────────────────────────────────── */
-
-/** Clock function — returns uptime in milliseconds. */
-typedef uint32_t (*mboot_clock_fn)(void);
-
-/**
- * Read boot record from persistent storage.
- * @return 0 on success, negative on failure.
- */
-typedef int (*mboot_read_fn)(mboot_record_t *record, void *ctx);
-
-/**
- * Write boot record to persistent storage.
- * @return 0 on success, negative on failure.
- */
-typedef int (*mboot_write_fn)(const mboot_record_t *record, void *ctx);
-
-/**
- * Check if a crash dump exists from the previous run.
- * @return true if crash data is available.
- */
-typedef bool (*mboot_has_crash_fn)(void *ctx);
-
-/**
- * Detect boot reason from hardware registers.
- *
- * Platform-specific. Read RCC reset flags (STM32), rtc_get_reset_reason
- * (ESP32), etc. Return MBOOT_REASON_COLD if unknown.
- */
-typedef mboot_reason_t (*mboot_detect_reason_fn)(void *ctx);
-
-/** Platform I/O bundle. */
 typedef struct {
-    mboot_read_fn          read_record;
-    mboot_write_fn         write_record;
-    mboot_has_crash_fn     has_crash;       /**< May be NULL.             */
-    mboot_detect_reason_fn detect_reason;   /**< May be NULL (→ COLD).    */
-    void                  *io_ctx;          /**< Context for all callbacks.*/
-} mboot_io_t;
+    uint32_t crash_loop_threshold;
+} mboot_config_t;
 
-/* ── Boot decision callback ────────────────────────────────────────────── */
-
-/**
- * Boot decision info — passed to the user's decision callback.
- */
 typedef struct {
-    mboot_reason_t    reason;          /**< Detected boot reason.          */
-    bool              has_crash_dump;  /**< Crash data from prev run?      */
-    bool              clean_shutdown;  /**< Was last shutdown clean?        */
-    uint32_t          boot_count;      /**< Total boot count.              */
-    uint32_t          crash_count;     /**< Consecutive crash count.       */
-    uint32_t          last_uptime_ms;  /**< How long the prev run lasted.  */
-    bool              crash_loop;      /**< crash_count >= threshold?       */
+    bool has_crash_dump;
+    bool clean_shutdown;
+    bool confirmed;
+    bool started;
+    bool last_uptime_valid;
+    bool crash_loop;
+    uint32_t boot_count;
+    uint32_t crash_count;
+    uint32_t generation;
+    uint32_t last_uptime_ms;
+    mboot_reason_t reason;
 } mboot_info_t;
 
-/**
- * Boot mode decision callback.
- *
- * Called during mboot_start() with all available info. Return the desired
- * boot mode. If NULL, microboot uses default logic:
- *   - crash_loop → MBOOT_MODE_RECOVERY
- *   - crash_dump → MBOOT_MODE_NORMAL (but info available for logging)
- *   - otherwise  → MBOOT_MODE_NORMAL
- */
+typedef mboot_slot_io_result_t (*mboot_read_slot_fn)(uint8_t slot_index,
+                                                     mboot_wire_t *out,
+                                                     void *ctx);
+
+typedef mboot_slot_io_result_t (*mboot_write_slot_fn)(uint8_t slot_index,
+                                                      const mboot_wire_t *record,
+                                                      void *ctx);
+
+typedef mboot_err_t (*mboot_has_crash_fn)(bool *has_crash, void *ctx);
+
+typedef mboot_reason_t (*mboot_detect_reason_fn)(void *ctx);
+
 typedef mboot_mode_t (*mboot_decide_fn)(const mboot_info_t *info, void *ctx);
 
-/* ── Boot manager instance ─────────────────────────────────────────────── */
+typedef uint32_t (*mboot_clock_fn)(void);
 
 typedef struct {
-    const mboot_io_t  *io;
-    mboot_clock_fn     clock;
-    mboot_decide_fn    decide_fn;
-    void              *decide_ctx;
+    mboot_read_slot_fn read_slot;
+    mboot_write_slot_fn write_slot;
+    mboot_has_crash_fn has_crash;
+    mboot_detect_reason_fn detect_reason;
+    void *io_ctx;
+} mboot_io_t;
 
-    mboot_record_t     record;         /**< Current boot record.           */
-    mboot_info_t       info;           /**< Info from current boot.        */
-    mboot_mode_t       mode;           /**< Decided boot mode.             */
-    bool               started;        /**< Has mboot_start() been called? */
+typedef struct {
+    mboot_config_t config;
+    mboot_io_t io;
+    mboot_clock_fn clock;
+    mboot_decide_fn decide_fn;
+    void *decide_ctx;
+
+    mboot_state_t state;
+    mboot_mode_t mode;
+    mboot_info_t info;
+
+    mboot_wire_t active_wire;
+    uint8_t active_slot;
+    bool has_active_slot;
+    bool busy;
+    uint32_t start_tick;
 } mboot_t;
 
-/* ── Core API ──────────────────────────────────────────────────────────── */
+const char *mboot_err_str(mboot_err_t err);
+const char *mboot_state_str(mboot_state_t state);
+const char *mboot_reason_str(mboot_reason_t reason);
+const char *mboot_mode_str(mboot_mode_t mode);
+const char *mboot_slot_io_result_str(mboot_slot_io_result_t result);
 
-/**
- * Initialise boot manager.
- *
- * @param boot   Instance (caller-allocated).
- * @param io     Platform I/O callbacks.
- * @param clock  Clock function.
- * @return MBOOT_OK on success.
- */
+mboot_config_t mboot_default_config(void);
+
 mboot_err_t mboot_init(mboot_t *boot, const mboot_io_t *io,
-                         mboot_clock_fn clock);
+                       mboot_clock_fn clock, const mboot_config_t *config);
 
-/**
- * Set the boot mode decision callback.
- * If not set, default logic is used.
- */
-void mboot_set_decide(mboot_t *boot, mboot_decide_fn fn, void *ctx);
-
-/**
- * Execute boot sequence. Call once at startup.
- *
- * 1. Read persistent boot record (validate magic + CRC)
- * 2. Detect boot reason (hardware + crash dump check)
- * 3. Update crash loop counter
- * 4. Call decision callback (or default logic)
- * 5. Write updated boot record
- *
- * After this, query mboot_mode(), mboot_reason(), mboot_info().
- *
- * @return MBOOT_OK on success (even if record was invalid — defaults used).
- */
+mboot_err_t mboot_set_decide(mboot_t *boot, mboot_decide_fn fn, void *ctx);
 mboot_err_t mboot_start(mboot_t *boot);
-
-/**
- * Mark a clean shutdown. Call before intentional reboot/poweroff.
- *
- * Sets clean_shutdown flag and writes record. On next boot, microboot
- * knows it wasn't a crash.
- */
-mboot_err_t mboot_shutdown(mboot_t *boot);
-
-/**
- * Confirm boot successful. Call after your app is fully initialized.
- *
- * Resets the crash loop counter. If you never call this and the device
- * crashes again, the crash counter keeps incrementing.
- */
 mboot_err_t mboot_confirm(mboot_t *boot);
+mboot_err_t mboot_shutdown(mboot_t *boot);
+mboot_err_t mboot_reset_history(mboot_t *boot);
 
-/* ── Query ─────────────────────────────────────────────────────────────── */
-
-/** Get the decided boot mode. */
+mboot_state_t mboot_state(const mboot_t *boot);
 mboot_mode_t mboot_mode(const mboot_t *boot);
-
-/** Get the detected boot reason. */
 mboot_reason_t mboot_reason(const mboot_t *boot);
-
-/** Get full boot info (reason, crash dump, counts, etc.). */
 mboot_err_t mboot_get_info(const mboot_t *boot, mboot_info_t *info);
-
-/** Get total boot count. */
 uint32_t mboot_boot_count(const mboot_t *boot);
-
-/** Get consecutive crash count. */
 uint32_t mboot_crash_count(const mboot_t *boot);
-
-/** Is the device in a crash loop? */
 bool mboot_is_crash_loop(const mboot_t *boot);
 
-/* ── CRC utility ───────────────────────────────────────────────────────── */
-
-/** CRC32 (same algorithm as microconf). */
 uint32_t mboot_crc32(const void *data, uint32_t len);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* MBOOT_H */
+#endif /* MICROBOOT_MBOOT_H_INCLUDED */

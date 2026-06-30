@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 on:
   push:
@@ -7,19 +7,176 @@ on:
     branches: [ "master" ]
 
 jobs:
-  test:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - cc: gcc
+            cxx: g++
+          - cc: clang
+            cxx: clang++
+        standard: [ "99", "11" ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang ninja-build cmake
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=${{ matrix.compiler.cc }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler.cxx }}
+          -DCMAKE_C_STANDARD=${{ matrix.standard }}
+          -DCMAKE_CXX_STANDARD=11
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizer:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer:
+          - name: asan
+            c_flags: -fsanitize=address
+            cxx_flags: -fsanitize=address
+            exe_link_flags: -fsanitize=address
+            asan_options: detect_leaks=0
+            ubsan_options: ""
+          - name: ubsan
+            c_flags: -fsanitize=undefined
+            cxx_flags: -fsanitize=undefined
+            exe_link_flags: -fsanitize=undefined
+            asan_options: ""
+            ubsan_options: halt_on_error=1:print_stacktrace=1
+          - name: asan-ubsan
+            c_flags: -fsanitize=address,undefined
+            cxx_flags: -fsanitize=address,undefined
+            exe_link_flags: -fsanitize=address,undefined
+            asan_options: detect_leaks=0
+            ubsan_options: halt_on_error=1:print_stacktrace=1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang ninja-build cmake
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_STANDARD=99
+          -DCMAKE_CXX_STANDARD=11
+          -DCMAKE_C_FLAGS=${{ matrix.sanitizer.c_flags }}
+          -DCMAKE_CXX_FLAGS=${{ matrix.sanitizer.cxx_flags }}
+          -DCMAKE_EXE_LINKER_FLAGS=${{ matrix.sanitizer.exe_link_flags }}
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: ${{ matrix.sanitizer.asan_options }}
+          UBSAN_OPTIONS: ${{ matrix.sanitizer.ubsan_options }}
+        run: ctest --test-dir build --output-on-failure
+
+  static-analysis:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential
+          sudo apt-get install -y build-essential clang clang-tools cppcheck ninja-build cmake
 
-      - name: Build and run tests
-        working-directory: tests
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_STANDARD=99
+          -DCMAKE_CXX_STANDARD=11
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: clang-tidy
+        run: >
+          clang-tidy -quiet -p build
+          -checks=-*,clang-analyzer-*
+          src/mboot.c -- -Iinclude -std=c99
+
+      - name: cppcheck
+        run: >
+          cppcheck --enable=warning,style,performance,portability
+          --inline-suppr --quiet --std=c99 -Iinclude
+          src/mboot.c tests/test_all.c tests/readme_example.c tests/multi_tu_main.c tests/multi_tu_helper.c
+
+      - name: scan-build
+        run: >
+          scan-build --status-bugs -o scan-build-out
+          cmake --build build --clean-first
+
+  windows-msvc:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_C_STANDARD=99 -DCMAKE_CXX_STANDARD=11
+
+      - name: Build
+        run: cmake --build build --config Debug
+
+      - name: Test
+        run: ctest --test-dir build -C Debug --output-on-failure
+
+  arm-compile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
         run: |
-          make
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi g++-arm-none-eabi
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+          -DBUILD_TESTING=OFF
+          -DMICROBOOT_BUILD_TESTS=OFF
+          -DCMAKE_C_COMPILER=arm-none-eabi-gcc
+          -DCMAKE_CXX_COMPILER=arm-none-eabi-g++
+          -DCMAKE_C_STANDARD=99
+          -DCMAKE_CXX_STANDARD=11
+
+      - name: Build
+        run: cmake --build build
