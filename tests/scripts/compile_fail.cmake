@@ -91,7 +91,7 @@ int main(void)
     (void)io;
     return 0;
 }
-]] "incompatible[^\n]*pointer[^\n]*types")
+]] "warning C4113" "incompatible[^\n]*pointer[^\n]*types")
 
 mboot_expect_compile_failure("bad_write_slot" 11 [[
 #include "mboot.h"
@@ -108,7 +108,7 @@ int main(void)
     (void)io;
     return 0;
 }
-]] "incompatible[^\n]*pointer[^\n]*types")
+]] "warning C4113" "incompatible[^\n]*pointer[^\n]*types")
 
 mboot_expect_compile_failure("bad_clock" 8 [[
 #include "mboot.h"
