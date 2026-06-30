@@ -54,12 +54,30 @@ static void zero_memory(void *ptr, size_t len)
 
 static bool reason_valid(mboot_reason_t reason)
 {
-    return reason >= MBOOT_REASON_COLD && reason <= MBOOT_REASON_USER;
+    switch (reason) {
+    case MBOOT_REASON_COLD:
+    case MBOOT_REASON_NORMAL:
+    case MBOOT_REASON_WATCHDOG:
+    case MBOOT_REASON_CRASH:
+    case MBOOT_REASON_BROWNOUT:
+    case MBOOT_REASON_USER:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static bool mode_valid(mboot_mode_t mode)
 {
-    return mode >= MBOOT_MODE_NORMAL && mode <= MBOOT_MODE_FACTORY;
+    switch (mode) {
+    case MBOOT_MODE_NORMAL:
+    case MBOOT_MODE_RECOVERY:
+    case MBOOT_MODE_SAFE:
+    case MBOOT_MODE_FACTORY:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static uint32_t saturating_inc(uint32_t value)
