@@ -35,3 +35,5 @@ Thumbs.db
 .env
 git.txt
 /prompts
+/.wsl_audit
+wsl_microboot_audit.sh

@@ -5,7 +5,7 @@ endif()
 set(_root "${MBOOT_BINARY_DIR}/compile-fail")
 file(MAKE_DIRECTORY "${_root}")
 
-function(mboot_expect_compile_failure name source_text)
+function(mboot_expect_compile_failure name expected_line source_text)
     set(expected_tokens ${ARGN})
     set(case_dir "${_root}/${name}")
     file(REMOVE_RECURSE "${case_dir}")
@@ -56,6 +56,16 @@ endif()
     if(bad_c_pos EQUAL -1)
         message(FATAL_ERROR "compile-fail case did not report bad.c for ${name}\n${build_output}")
     endif()
+    string(FIND "${build_output}" "bad.c:${expected_line}" line_colon_pos)
+    if(line_colon_pos EQUAL -1)
+        string(FIND "${build_output}" "bad.c(${expected_line})" line_paren_pos)
+        if(line_paren_pos EQUAL -1)
+            string(FIND "${build_output}" "bad.c(${expected_line}," line_comma_pos)
+            if(line_comma_pos EQUAL -1)
+                message(FATAL_ERROR "compile-fail case did not report the expected source line for ${name}\n${build_output}")
+            endif()
+        endif()
+    endif()
 
     set(token_found FALSE)
     foreach(token IN LISTS expected_tokens)
@@ -70,7 +80,7 @@ endif()
     endif()
 endfunction()
 
-mboot_expect_compile_failure("bad_read_slot" [[
+mboot_expect_compile_failure("bad_read_slot" 10 [[
 #include "mboot.h"
 static mboot_slot_io_result_t bad_read(mboot_wire_t *out, void *ctx)
 {
@@ -86,7 +96,7 @@ int main(void)
 }
 ]] mboot_read_slot_fn)
 
-mboot_expect_compile_failure("bad_write_slot" [[
+mboot_expect_compile_failure("bad_write_slot" 11 [[
 #include "mboot.h"
 static mboot_slot_io_result_t bad_write(uint8_t slot, mboot_wire_t *record, void *ctx)
 {
@@ -103,7 +113,7 @@ int main(void)
 }
 ]] mboot_write_slot_fn)
 
-mboot_expect_compile_failure("bad_clock" [[
+mboot_expect_compile_failure("bad_clock" 8 [[
 #include "mboot.h"
 static uint64_t bad_clock(void)
 {
@@ -117,7 +127,7 @@ int main(void)
 }
 ]] mboot_clock_fn bad_clock)
 
-mboot_expect_compile_failure("bad_reason" [[
+mboot_expect_compile_failure("bad_reason" 9 [[
 #include "mboot.h"
 static int bad_reason(void *ctx)
 {
@@ -132,7 +142,7 @@ int main(void)
 }
 ]] mboot_detect_reason_fn bad_reason)
 
-mboot_expect_compile_failure("bad_decide" [[
+mboot_expect_compile_failure("bad_decide" 10 [[
 #include "mboot.h"
 static int bad_decide(const mboot_info_t *info, void *ctx)
 {
@@ -148,7 +158,7 @@ int main(void)
 }
 ]] mboot_decide_fn bad_decide)
 
-mboot_expect_compile_failure("const_incorrect_write" [[
+mboot_expect_compile_failure("const_incorrect_write" 11 [[
 #include "mboot.h"
 static mboot_slot_io_result_t bad_write(uint8_t slot, mboot_wire_t *record, void *ctx)
 {
@@ -165,7 +175,7 @@ int main(void)
 }
 ]] mboot_write_slot_fn bad_write)
 
-mboot_expect_compile_failure("old_raw_struct_api" [[
+mboot_expect_compile_failure("old_raw_struct_api" 4 [[
 #include "mboot.h"
 int main(void)
 {
