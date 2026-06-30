@@ -66,8 +66,8 @@ function(mboot_expect_compile_failure name expected_line source_text)
 
     set(token_found FALSE)
     foreach(token IN LISTS expected_tokens)
-        string(FIND "${build_output}" "${token}" token_pos)
-        if(NOT token_pos EQUAL -1)
+        string(REGEX MATCH "${token}" token_match "${build_output}")
+        if(NOT token_match STREQUAL "")
             set(token_found TRUE)
             break()
         endif()
@@ -91,7 +91,7 @@ int main(void)
     (void)io;
     return 0;
 }
-]] "incompatible pointer types" "incompatible function pointer types")
+]] "incompatible[^\n]*pointer[^\n]*types")
 
 mboot_expect_compile_failure("bad_write_slot" 11 [[
 #include "mboot.h"
@@ -108,7 +108,7 @@ int main(void)
     (void)io;
     return 0;
 }
-]] "incompatible pointer types" "incompatible function pointer types")
+]] "incompatible[^\n]*pointer[^\n]*types")
 
 mboot_expect_compile_failure("bad_clock" 8 [[
 #include "mboot.h"
